@@ -1,0 +1,2 @@
+vehicle_id,vehicle_name,number_of_vehicles,vehicle_speed,vehicle_capacity_volume,utilization rate,usage cost per hour,lt ls,lt bs,lt seq,lt st kit,lt tr kit,vehicle_capacity_weight
+1,Towtrain,2,3600,100,0.335,30,0.00625,0.00417,0.00625,0.00625,0.00625,5000
