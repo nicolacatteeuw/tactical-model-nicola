@@ -1,55 +1,62 @@
 
 from assembly_line_simulation import AssemblyLineSimulation, Task
+from data_parser import load_data_from_csv
+from milp_model import TacticalAssemblyLineFeedingModel
+import pulp
 
 def main():
-    print("Initializing Tactical Assembly Line Model...")
+    print("=== Part 1: Solving Tactical Assembly Line Feeding MILP Model ===")
+    sets, params = load_data_from_csv()
 
-    # 1. Define Service Level Inputs (Baseline)
-    # The user should enter the 100% service level requirements here.
-    # Example: 40 workers and 20 vehicles.
-    num_workers = 40
-    num_vehicles = 20
+    if sets is None or params is None:
+        print("Failed to load CSV data. Aborting.")
+        return
 
-    print(f"Service Level: {num_workers} Workers, {num_vehicles} Vehicles")
+    print(f"Data Loaded: {len(sets['I'])} Parts, {len(sets['W'])} Stations, {len(sets['V'])} Vehicles, {len(sets['C'])} Cells.")
 
-    sim = AssemblyLineSimulation(num_workers_100_percent=num_workers, num_vehicles_100_percent=num_vehicles)
+    model = TacticalAssemblyLineFeedingModel(sets, params)
+    model.build_model()
+    print("Solving MILP model (this may take a moment)...")
+    status = model.solve()
 
-    # 2. Define Tasks based on the Tactical Model (12 Images)
-    # TODO: Replace the example tasks below with the specific tasks from the provided images.
-    # Each Task should define:
-    # - id: Unique identifier
-    # - duration: Time steps to complete
-    # - workers_needed: Number of workers required
-    # - vehicles_needed: Number of vehicles required
-    # - dependencies: List of task IDs that must complete before this task starts
+    if status == pulp.LpStatusOptimal:
+        print("MILP Model Solved Optimally.")
+    else:
+        print(f"MILP Model Solution Status: {pulp.LpStatus[status]}")
 
-    # Example Placeholder Tasks:
-    # Task 1: Pre-assembly (Duration 10, Needs 2 Workers)
-    sim.add_task(Task(id=1, duration=10, workers_needed=2, vehicles_needed=0))
+    print("\n=== Part 2: Disruption Simulation ===")
 
-    # Task 2: Main Assembly (Duration 20, Needs 4 Workers, 1 Vehicle, Depends on Task 1)
-    sim.add_task(Task(id=2, duration=20, workers_needed=4, vehicles_needed=1, dependencies=[1]))
+    # Retrieve number of vehicles from the strategic data
+    # We sum the baseline vehicles available
+    total_vehicles_100_percent = sum(params['n_v'].values())
+    # Assuming standard 100% service level for workers (user configurable)
+    num_workers_100_percent = 40
 
-    # Task 3: Quality Check (Duration 5, Needs 1 Worker, Depends on Task 2)
-    sim.add_task(Task(id=3, duration=5, workers_needed=1, vehicles_needed=0, dependencies=[2]))
+    print(f"Baseline Service Level: {num_workers_100_percent} Workers, {total_vehicles_100_percent} Vehicles")
 
-    # ... Add remaining tasks from the model ...
+    sim_base = AssemblyLineSimulation(num_workers_100_percent=num_workers_100_percent, num_vehicles_100_percent=int(total_vehicles_100_percent))
 
-    print(f"Added {len(sim.tasks)} tasks to the simulation.")
+    # Define placeholder Tasks for simulation to analyze efficiency based on the overall load
+    # Here we create tasks that represent the operational assembly process
+    # dependent on the strategic feeding solved above.
 
-    # 3. Run Baseline Simulation
+    # Task 1: Pre-assembly
+    sim_base.add_task(Task(id=1, duration=10, workers_needed=2, vehicles_needed=0))
+    # Task 2: Main Assembly (Needs vehicle for part transport)
+    sim_base.add_task(Task(id=2, duration=20, workers_needed=4, vehicles_needed=1, dependencies=[1]))
+    # Task 3: Quality Check
+    sim_base.add_task(Task(id=3, duration=5, workers_needed=1, vehicles_needed=0, dependencies=[2]))
+
     print("\nRunning Baseline Simulation...")
-    sim.run_simulation(duration=100)
-    metrics_base = sim.calculate_metrics()
+    sim_base.run_simulation(duration=100)
+    metrics_base = sim_base.calculate_metrics()
     print("Baseline Metrics:", metrics_base)
 
-    # 4. Analyze Disruptions
     print("\n--- Disruption Analysis ---")
 
-    # Scenario A: Understaffing (Short term)
+    # Scenario A: Understaffing
     print("\nScenario: Understaffing (5 Workers Absent)")
-    sim_understaffed = AssemblyLineSimulation(num_workers, num_vehicles)
-    # Re-add tasks (need to recreate objects or deep copy)
+    sim_understaffed = AssemblyLineSimulation(num_workers_100_percent, int(total_vehicles_100_percent))
     sim_understaffed.add_task(Task(1, 10, 2, 0))
     sim_understaffed.add_task(Task(2, 20, 4, 1, [1]))
     sim_understaffed.add_task(Task(3, 5, 1, 0, [2]))
@@ -60,18 +67,17 @@ def main():
     print("Understaffing Metrics:", metrics_under)
 
     # Scenario B: Vehicle Breakdown
-    print("\nScenario: Vehicle Breakdown (2 Vehicles Broken)")
-    sim_breakdown = AssemblyLineSimulation(num_workers, num_vehicles)
+    print("\nScenario: Vehicle Breakdown (1 Vehicle Broken)")
+    sim_breakdown = AssemblyLineSimulation(num_workers_100_percent, int(total_vehicles_100_percent))
     sim_breakdown.add_task(Task(1, 10, 2, 0))
     sim_breakdown.add_task(Task(2, 20, 4, 1, [1]))
     sim_breakdown.add_task(Task(3, 5, 1, 0, [2]))
 
-    sim_breakdown.apply_vehicle_breakdown(num_broken=2)
+    sim_breakdown.apply_vehicle_breakdown(num_broken=1)
     sim_breakdown.run_simulation(duration=100)
     metrics_break = sim_breakdown.calculate_metrics()
     print("Breakdown Metrics:", metrics_break)
 
-    # Comparison
     print("\n--- Impact Analysis ---")
     print(f"Efficiency Loss (Understaffing): {metrics_base['throughput'] - metrics_under['throughput']:.4f} tasks/step")
     print(f"Efficiency Loss (Breakdown): {metrics_base['throughput'] - metrics_break['throughput']:.4f} tasks/step")

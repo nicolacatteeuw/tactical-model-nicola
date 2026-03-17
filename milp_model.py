@@ -295,7 +295,8 @@ class TacticalAssemblyLineFeedingModel:
             self.prob += pulp.lpSum(self.TLF[c,v] for c in self.C for v in self.V) <= pulp.lpSum(self.PX[i,'TK'] for i in self.I)
 
     def solve(self):
-        status = self.prob.solve(pulp.PULP_CBC_CMD(msg=0))
+        # Added a time limit of 30 seconds since we just want a quick demonstration or good feasible solution
+        status = self.prob.solve(pulp.PULP_CBC_CMD(msg=1, timeLimit=30))
         print(f"Status: {pulp.LpStatus[status]}")
         print(f"Objective Value: {pulp.value(self.prob.objective)}")
         return status
